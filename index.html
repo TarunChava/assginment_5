@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Op Art - Bridget Riley Stripes</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #f2ede0;
+  }
+  canvas {
+    display: block;
+  }
+  #enable {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    padding: 12px 20px;
+    font: 16px sans-serif;
+    border: 0;
+    border-radius: 8px;
+    background: #141414;
+    color: #f2ede0;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<button id="enable">Enable motion</button>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  const BG = '#f2ede0';
+  const BLACK = '#141414';
+  const CYAN = '#26c6da';
+  const MAGENTA = '#e0218a';
+  const ORANGE = '#f7941d';
+
+  // Size the canvas to the window and map CSS pixels onto the device's
+  // pixel backing store so the drawing stays crisp on high-DPI screens.
+  function sizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+  }
+
+  // Draws one vertical stripe "unit": a thin cyan line, a wide black band,
+  // then thin magenta and orange lines, each sized as a fraction of the
+  // unit's own width so the whole group scales together.
+  function drawStripeUnit(x, unitWidth, height) {
+    ctx.save();
+    ctx.translate(x, 0);
+
+    const lineW = unitWidth * 0.09;
+
+    ctx.fillStyle = CYAN;
+    ctx.fillRect(unitWidth * 0.04, 0, lineW, height);
+
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(unitWidth * 0.16, 0, unitWidth * 0.34, height);
+
+    ctx.fillStyle = MAGENTA;
+    ctx.fillRect(unitWidth * 0.58, 0, lineW, height);
+
+    ctx.fillStyle = ORANGE;
+    ctx.fillRect(unitWidth * 0.74, 0, lineW, height);
+
+    ctx.restore();
+  }
+
+  // Motion state: raw target comes from devicemotion (jittery); the
+  // smoothed values chase the target a little each frame (easing).
+  const target = { x: 0, y: 0 };
+  const smooth = { x: 0, y: 0 };
+  const EASE = 0.06;      // fraction of the remaining distance covered per frame
+  const GRAVITY = 9.8;
+
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  function onDeviceMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x == null || a.y == null) return;
+    // Gravity projected on the screen axes ~ tilt, normalized to -1..1.
+    // Android and iOS report opposite signs, so flip x on Android.
+    const sign = /android/i.test(navigator.userAgent) ? -1 : 1;
+    target.x = clamp(sign * a.x / GRAVITY, -1, 1);
+    target.y = clamp(sign * a.y / GRAVITY, -1, 1);
+  }
+
+  // Laptop fallback so the effect can be previewed without a sensor.
+  window.addEventListener('mousemove', function (e) {
+    target.x = (e.clientX / window.innerWidth) * 2 - 1;
+    target.y = (e.clientY / window.innerHeight) * 2 - 1;
+  });
+
+  function startMotion() {
+    window.addEventListener('devicemotion', onDeviceMotion);
+  }
+
+  const btn = document.getElementById('enable');
+  btn.addEventListener('click', function () {
+    if (typeof DeviceMotionEvent !== 'undefined' &&
+        typeof DeviceMotionEvent.requestPermission === 'function') {
+      DeviceMotionEvent.requestPermission().then(function (state) {
+        if (state === 'granted') startMotion();
+        btn.style.display = 'none';
+      }).catch(function () { btn.textContent = 'Motion unavailable'; });
+    } else {
+      startMotion();
+      btn.style.display = 'none';
+    }
+  });
+
+  function draw() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, w, h);
+
+    const baseUnit = w / 34;      // average stripe-unit width, scales with viewport
+    const waveCycles = 2.5;       // number of pinch points across the canvas
+    // Tilting up/down subtly changes how strongly the stripes pinch.
+    const amplitude = 0.55 + smooth.y * 0.12;
+    // Tilting left/right slides the pinch points sideways.
+    const phase = Math.PI * 0.4 + smooth.x * 0.9;
+
+    for (let x = 0; x < w; ) {
+      const t = (x / w) * Math.PI * 2 * waveCycles + phase;
+      const spacingScale = 1 + amplitude * Math.sin(t);
+      const unitWidth = baseUnit * spacingScale;
+
+      drawStripeUnit(x, unitWidth, h);
+      x += unitWidth;
+    }
+  }
+
+  function frame() {
+    smooth.x += (target.x - smooth.x) * EASE;
+    smooth.y += (target.y - smooth.y) * EASE;
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  function onResize() {
+    sizeCanvas();
+    draw();
+  }
+
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
+
+  onResize();
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>
